@@ -1,0 +1,32 @@
+name: Auto Scrape PTCG Official Rankings
+
+on:
+  schedule:
+    # 每 2 小時自動執行一次（UTC 時間）
+    - cron: '0 */2 * * *'
+  # 允許在 GitHub Actions 頁面手動點擊按鈕立即執行測試
+  workflow_dispatch:
+
+jobs:
+  scrape-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies and Playwright
+        run: |
+          pip install requests playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run PTCG Ranking Scraper
+        env:
+          GAS_API_URL: ${{ secrets.GAS_API_URL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: python scraper.py
