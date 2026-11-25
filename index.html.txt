@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PTCG 台灣即時排名與積分試算系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              850: '#151e32',
+              900: '#0f172a',
+              950: '#090d16',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #090d16;
+      color: #f1f5f9;
+    }
+    .font-mono-num {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* 自訂捲軸 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
+
+  <!-- 頂部導覽列 -->
+  <header class="sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
+          <svg class="w-5 h-5 text-slate-950" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-black tracking-tight text-lg text-white">PTCG 台灣即時排名</span>
+            <span class="hidden sm:inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">2026-27 賽季</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden sm:block">自動同步官方數據 × 獨立試算引擎</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="openModal('archModal')" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          <span class="hidden sm:inline">GAS 後端串接碼</span>
+        </button>
+        <button id="adminToggleBtn" onclick="toggleAdminMode()" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/40 transition flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          <span id="adminBtnText">管理員手動調整</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容區 -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 space-y-6">
+
+    <!-- 狀態列與資料同步資訊 -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/70 border border-slate-800 rounded-2xl px-4 py-3 text-xs">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span class="flex items-center gap-1.5 font-medium text-emerald-400">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="syncStatusText">混合引擎就緒（本地演示 + GAS 雙向接口）</span>
+        </span>
+        <span class="text-slate-400">最後自動抓取：<strong id="lastFetchTime" class="text-slate-200 font-mono-num">2026-11-25 20:00</strong></span>
+        <span class="text-slate-400">最後手動微調：<strong id="lastManualTime" class="text-slate-200 font-mono-num">剛剛</strong></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="simulateAutoFetch()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium border border-slate-700 transition flex items-center gap-1.5 active:scale-95">
+          <svg id="refreshIcon" class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          模擬執行自動抓取
+        </button>
+      </div>
+    </div>
+
+    <!-- 頂部數據摘要卡片 (KPI Cards) -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
+        <div class="text-xs text-slate-400 mb-1">目前檢視組別</div>
+        <div id="kpiDivisionName" class="text-xl sm:text-2xl font-black text-white">孩童組 (Junior)</div>
+        <div class="text-[11px] text-slate-500 mt-1">切換下方頁籤即時更新</div>
+      </div>
+
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
+        <div class="text-xs text-slate-400 mb-1">排行榜總人數</div>
+        <div class="flex items-baseline gap-1.5">
+          <span id="kpiTotalPlayers" class="text-xl sm:text-2xl font-black text-sky-400 font-mono-num">0</span>
+          <span class="text-xs text-slate-400">位訓練家</span>
+        </div>
+        <div id="kpiWcsInvitedCount" class="text-[11px] text-emerald-400 mt-1">已獲邀 WCS 2027：0 位</div>
+      </div>
+
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
+        <div class="text-xs text-slate-400 mb-1">目前最高積分</div>
+        <div class="flex items-baseline gap-1.5">
+          <span id="kpiTopPoints" class="text-xl sm:text-2xl font-black text-amber-400 font-mono-num">0</span>
+          <span class="text-xs text-slate-400">PTS</span>
+        </div>
+        <div id="kpiTopPlayer" class="text-[11px] text-slate-400 mt-1 truncate">榜首：—</div>
+      </div>
+
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden">
+        <div class="text-xs text-slate-400 mb-1">WCS 2027 資格線</div>
+        <div class="flex items-baseline gap-1.5">
+          <span id="kpiCutoffRank" class="text-xl sm:text-2xl font-black text-rose-400 font-mono-num">前 16 名</span>
+        </div>
+        <div id="kpiCutoffPoints" class="text-[11px] text-slate-400 mt-1">目前門檻分數：— PTS</div>
+      </div>
+    </section>
+
+    <!-- 管理員控制面板（開啟管理模式時顯示） -->
+    <section id="adminBanner" class="hidden bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-slate-900 border border-amber-500/40 rounded-2xl p-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 class="text-sm font-bold text-amber-300 flex items-center gap-2">
+            <span>🛠️ 管理員手動調整與試算模式已啟動</span>
+          </h3>
+          <p class="text-xs text-slate-300 mt-0.5">點擊下方列表右側的「編輯 / 加減分」，可隨時補登尚未入帳的賽事積分或標記 WCS 資格，系統將自動重算試算排名。</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button onclick="openAddPlayerModal()" class="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20">
+            + 新增臨時選手
+          </button>
+          <button onclick="resetAllManualData()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs border border-slate-700 transition">
+            還原預設範例
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 排行榜主控台 -->
+    <section class="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      
+      <!-- 控制器頂部：組別切換 & 計分模式切換 -->
+      <div class="p-4 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        
+        <!-- 組別頁籤 -->
+        <div class="flex p-1 bg-slate-950 rounded-xl border border-slate-800 w-full md:w-auto">
+          <button onclick="setDivision('Junior')" id="tab-Junior" class="div-tab flex-1 md:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition">
+            孩童組 <span class="text-[10px] opacity-75">JR</span>
+          </button>
+          <button onclick="setDivision('Senior')" id="tab-Senior" class="div-tab flex-1 md:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition">
+            少年組 <span class="text-[10px] opacity-75">SR</span>
+          </button>
+          <button onclick="setDivision('Master')" id="tab-Master" class="div-tab flex-1 md:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition">
+            大師組 <span class="text-[10px] opacity-75">MA</span>
+          </button>
+        </div>
+
+        <!-- 計分模式切換（官方排名 vs 本站試算排名） -->
+        <div class="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800 w-full md:w-auto">
+          <button onclick="setRankingMode('simulated')" id="mode-simulated" class="mode-btn flex-1 md:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
+            <span>⚡ 本站試算排名</span>
+          </button>
+          <button onclick="setRankingMode('official')" id="mode-official" class="mode-btn flex-1 md:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
+            <span>🏛️ 官方公布排名</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 進階搜尋與篩選列 -->
+      <div class="p-4 bg-slate-900/50 border-b border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div class="relative flex-1 max-w-md">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" id="searchInput" oninput="renderTable()" placeholder="搜尋玩家暱稱、PTCG ID 或戰隊標籤（如：鑰圈兒）..." class="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/60 transition" />
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800 hover:border-slate-700">
+            <input type="checkbox" id="crossDivCheck" onchange="renderTable()" class="rounded bg-slate-800 border-slate-600 text-amber-500 focus:ring-0" />
+            <span>跨組別全域搜尋</span>
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800 hover:border-slate-700">
+            <input type="checkbox" id="wcsOnlyCheck" onchange="renderTable()" class="rounded bg-slate-800 border-slate-600 text-emerald-500 focus:ring-0" />
+            <span class="text-emerald-400 font-medium">只顯示 WCS 2027 已獲邀</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 排行榜表格 -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-950/60">
+              <th class="py-3.5 px-4 w-20 text-center">排名</th>
+              <th class="py-3.5 px-4">訓練家資訊</th>
+              <th class="py-3.5 px-4 hidden md:table-cell">PTCG ID</th>
+              <th class="py-3.5 px-4 text-right">官方積分</th>
+              <th class="py-3.5 px-4 text-right" id="colManualHeader">手動試算調整</th>
+              <th class="py-3.5 px-4 text-right">最終總積分</th>
+              <th class="py-3.5 px-4 text-center w-28" id="colActionHeader">戰績明細</th>
+            </tr>
+          </thead>
+          <tbody id="rankingTableBody" class="divide-y divide-slate-800/60 text-sm">
+            <!-- JS 動態渲染 -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 無資料提示 -->
+      <div id="emptyState" class="hidden py-12 text-center">
+        <p class="text-slate-400 text-sm">找不到符合篩選條件的訓練家資料</p>
+      </div>
+    </section>
+
+    <!-- 頁尾說明 -->
+    <footer class="text-center text-xs text-slate-500 py-4 space-y-1">
+      <p>資料來源：Pokémon Asia 官方訓練家網站（自動排程抓取）＋ 管理員手動試算修正</p>
+      <p>非官方網站。本頁僅供戰隊與玩家整理公開賽事與積分試算參考，Pokémon 相關商標屬原權利人所有。</p>
+    </footer>
+  </main>
+
+  <!-- 1. 玩家詳細資料彈窗 (Player Detail Modal) -->
+  <div id="playerModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-fade-in">
+      <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+        <div>
+          <span id="modalPlayerDivBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">孩童組</span>
+          <h3 id="modalPlayerName" class="text-lg font-black text-white mt-1">玩家名稱</h3>
+          <p id="modalPlayerId" class="text-xs text-slate-400 font-mono-num">ID: 0000000</p>
+        </div>
+        <button onclick="closeModal('playerModal')" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center
